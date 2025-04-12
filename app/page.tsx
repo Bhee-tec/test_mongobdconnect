@@ -28,12 +28,9 @@ const TILE_TYPES = ['red', 'blue', 'green', 'yellow', 'purple'] // Tile colors
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [notification, setNotification] = useState('')
   const [fluxxBalance, setFluxxBalance] = useState<number>(0)
   const [movesLeft, setMovesLeft] = useState<number>(30)  // Initial moves limit
   const [gameBoard, setGameBoard] = useState<Tile[][]>([]) // 2D array for the game board
-
-  const points = user?.points || 0  // Safe fallback to 0 if points are undefined
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
@@ -174,12 +171,6 @@ export default function Home() {
           </div>
         ))}
       </div>
-
-      {notification && (
-        <div className="mt-4 p-2 bg-green-100 text-green-700 rounded">
-          {notification}
-        </div>
-      )}
     </div>
   )
 }
