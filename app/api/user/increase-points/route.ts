@@ -4,9 +4,20 @@ import { prisma } from '@/lib/prisma'
 export async function POST(req: NextRequest) {
     try {
         const { telegramId } = await req.json()
-
+        
+        console.log('Received telegramId:', telegramId)  // Debug log to check the telegramId
+        
         if (!telegramId) {
             return NextResponse.json({ error: 'Invalid telegramId' }, { status: 400 })
+        }
+
+        // Check if the user exists before updating points
+        const user = await prisma.user.findUnique({
+            where: { telegramId },
+        })
+
+        if (!user) {
+            return NextResponse.json({ error: 'User not found' }, { status: 404 })
         }
 
         const updatedUser = await prisma.user.update({
