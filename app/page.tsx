@@ -18,13 +18,20 @@ interface User {
   movesLeft: number;
 }
 
+type Tile = {
+  id: number;
+  type: string; // Tile type (e.g., color)
+}
+
+const TILE_TYPES = ['red', 'blue', 'green', 'yellow', 'purple'] // Tile colors
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notification, setNotification] = useState('')
   const [fluxxBalance, setFluxxBalance] = useState<number>(0)
   const [movesLeft, setMovesLeft] = useState<number>(30)  // Initial moves limit
-  const [gameBoard, setGameBoard] = useState<number[][]>([]) // Example board for the game
+  const [gameBoard, setGameBoard] = useState<Tile[][]>([]) // 2D array for the game board
 
   const points = user?.points || 0  // Safe fallback to 0 if points are undefined
 
@@ -51,6 +58,7 @@ export default function Home() {
               setUser(data)
               setFluxxBalance(Math.floor(data.points / 10000)) // Calculate Fluxx balance
               setMovesLeft(data.movesLeft)  // Set initial moves left
+              generateGameBoard()
             }
           })
           .catch(() => {
@@ -64,64 +72,74 @@ export default function Home() {
     }
   }, [])
 
-  const handleIncreasePoints = async () => {
-    if (!user || movesLeft <= 0) {
-      setError('No moves left for this hour')
-      return
-    }
-
-    try {
-      const res = await fetch('/api/increase-points', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ telegramId: user.telegramId }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setUser({ ...user, points: data.points })
-        setFluxxBalance(Math.floor(data.points / 10000)) // Update Fluxx balance
-        setNotification('Points increased successfully!')
-        setTimeout(() => setNotification(''), 3000)
-
-        // Update the moves left after a successful move
-        const newMovesLeft = movesLeft - 1
-        setMovesLeft(newMovesLeft)
-
-        // Save updated moves left to database
-        await fetch('/api/update-moves', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ telegramId: user.telegramId, movesLeft: newMovesLeft }),
-        })
-      } else {
-        setError('Failed to increase points')
+  // Generate a random game board
+  const generateGameBoard = () => {
+    const board: Tile[][] = []
+    for (let i = 0; i < 5; i++) {
+      const row: Tile[] = []
+      for (let j = 0; j < 5; j++) {
+        const randomType = TILE_TYPES[Math.floor(Math.random() * TILE_TYPES.length)]
+        row.push({ id: i * 5 + j, type: randomType })
       }
-    } catch (err) {
-      console.error(err)
-      setError('An error occurred while increasing points')
+      board.push(row)
+    }
+    setGameBoard(board)
+  }
+
+  // Swap tiles logic
+  const handleTileSwap = (x1: number, y1: number, x2: number, y2: number) => {
+    const newBoard = [...gameBoard]
+    const tile1 = newBoard[x1][y1]
+    const tile2 = newBoard[x2][y2]
+
+    // Swap the tiles
+    newBoard[x1][y1] = tile2
+    newBoard[x2][y2] = tile1
+
+    // Check for matches (this is a simplified example)
+    if (checkForMatches(newBoard)) {
+      setGameBoard(newBoard)
+      // Increase points and handle move
+      setUser({ ...user!, points: user!.points + 5 })
+      setMovesLeft(movesLeft - 1)
+      updateDatabase(user!.telegramId, user!.points + 5)
     }
   }
 
-  // Function to reset moves after an hour
-  const resetMoves = () => {
-    const now = new Date()
-    const lastReset = new Date(localStorage.getItem('lastReset') || 0)
-    const diffInHours = Math.abs(now.getTime() - lastReset.getTime()) / 36e5
-
-    if (diffInHours >= 1) {
-      // Reset moves to 30 if an hour has passed
-      setMovesLeft(30)
-      localStorage.setItem('lastReset', now.toISOString())  // Store the last reset time
+  // Check for matches (3 or more tiles of the same type in a row or column)
+  const checkForMatches = (board: Tile[][]) => {
+    let matchFound = false
+    // Horizontal check
+    for (let i = 0; i < board.length; i++) {
+      for (let j = 0; j < board[i].length - 2; j++) {
+        if (board[i][j].type === board[i][j + 1].type && board[i][j].type === board[i][j + 2].type) {
+          matchFound = true
+          // Handle the match (reset the tiles, add points, etc.)
+        }
+      }
     }
+    // Vertical check
+    for (let i = 0; i < board.length - 2; i++) {
+      for (let j = 0; j < board[i].length; j++) {
+        if (board[i][j].type === board[i + 1][j].type && board[i][j].type === board[i + 2][j].type) {
+          matchFound = true
+          // Handle the match (reset the tiles, add points, etc.)
+        }
+      }
+    }
+    return matchFound
   }
 
-  useEffect(() => {
-    resetMoves()
-  }, [movesLeft])
+  // Save the updated points and moves to the database
+  const updateDatabase = async (telegramId: string, points: number) => {
+    await fetch('/api/update-points', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ telegramId, points }),
+    })
+  }
 
   if (error) {
     return <div className="container mx-auto p-4 text-red-500">{error}</div>
@@ -137,17 +155,25 @@ export default function Home() {
       </header>
 
       <div className="mb-4 flex justify-between">
-        <div>Points: {points}</div>  {/* Using the safe points value */}
-        <div>Moves Left: {movesLeft}</div>  {/* Displaying the remaining moves */}
+        <div>Points: {user?.points}</div>
+        <div>Moves Left: {movesLeft}</div>
       </div>
 
-      {/* Your game tiles logic here */}
-      <button
-        onClick={handleIncreasePoints}
-        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4"
-      >
-        Increase Points
-      </button>
+      <div className="game-board">
+        {gameBoard.map((row, rowIndex) => (
+          <div key={rowIndex} className="game-row flex">
+            {row.map((tile, colIndex) => (
+              <div
+                key={tile.id}
+                className={`tile ${tile.type}`}
+                onClick={() => handleTileSwap(rowIndex, colIndex, rowIndex, colIndex + 1)} // Example of swapping adjacent tiles
+              >
+                {tile.type[0].toUpperCase()}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
 
       {notification && (
         <div className="mt-4 p-2 bg-green-100 text-green-700 rounded">
