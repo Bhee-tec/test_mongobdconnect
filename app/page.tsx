@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { WebApp } from '@twa-dev/types'
 
 declare global {
@@ -11,34 +11,17 @@ declare global {
   }
 }
 
-interface User {
-  firstName: string
-  points: number
-  telegramId: string
-  movesLeft: number
-}
-
-type Tile = {
-  id: number
-  type: string // Tile type (e.g., color)
-}
-
-const TILE_TYPES = ['red', 'blue', 'green', 'yellow', 'purple'] // Tile colors
-
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
-  const [fluxxBalance, setFluxxBalance] = useState<number>(0)
-  const [movesLeft, setMovesLeft] = useState<number>(30) // Initial moves limit
-  const [gameBoard, setGameBoard] = useState<Tile[][]>([]) // 2D array for the game board
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null) // Track the selected tile
+  const [notification, setNotification] = useState('')
 
-  // Fetch the user data and set up the game
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp
       tg.ready()
 
+      const initData = tg.initData || ''
       const initDataUnsafe = tg.initDataUnsafe || {}
 
       if (initDataUnsafe.user) {
@@ -55,12 +38,9 @@ export default function Home() {
               setError(data.error)
             } else {
               setUser(data)
-              setFluxxBalance(Math.floor(data.points / 10000)) // Calculate Fluxx balance
-              setMovesLeft(data.movesLeft) // Set initial moves left
-              generateGameBoard() // Generate the game board
             }
           })
-          .catch(() => {
+          .catch((err) => {
             setError('Failed to fetch user data')
           })
       } else {
@@ -71,83 +51,30 @@ export default function Home() {
     }
   }, [])
 
-  // Generate a random game board
-  const generateGameBoard = () => {
-    const board: Tile[][] = []
-    for (let i = 0; i < 5; i++) {
-      const row: Tile[] = []
-      for (let j = 0; j < 5; j++) {
-        const randomType = TILE_TYPES[Math.floor(Math.random() * TILE_TYPES.length)]
-        row.push({ id: i * 5 + j, type: randomType })
+  const handleIncreasePoints = async () => {
+    if (!user) return
+
+    try {
+      const res = await fetch('/api/increase-points', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ telegramId: user.telegramId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setUser({ ...user, points: data.points })
+        setNotification('Points increased successfully!')
+        setTimeout(() => setNotification(''), 3000)
+      } else {
+        setError('Failed to increase points')
       }
-      board.push(row)
-    }
-    setGameBoard(board)
-  }
-
-  // Check for matching tiles
-  const checkForMatches = (board: Tile[][]) => {
-    let matchFound = false
-    // Horizontal check
-    for (let i = 0; i < board.length; i++) {
-      for (let j = 0; j < board[i].length - 2; j++) {
-        if (board[i][j].type === board[i][j + 1].type && board[i][j].type === board[i][j + 2].type) {
-          matchFound = true
-        }
-      }
-    }
-    // Vertical check
-    for (let i = 0; i < board.length - 2; i++) {
-      for (let j = 0; j < board[i].length; j++) {
-        if (board[i][j].type === board[i + 1][j].type && board[i][j].type === board[i + 2][j].type) {
-          matchFound = true
-        }
-      }
-    }
-    return matchFound
-  }
-
-  // Handle tile swap
-  const handleTileSwap = (x1: number, y1: number, x2: number, y2: number) => {
-    const newBoard = [...gameBoard]
-    const tile1 = newBoard[x1][y1]
-    const tile2 = newBoard[x2][y2]
-
-    // Swap the tiles
-    newBoard[x1][y1] = tile2
-    newBoard[x2][y2] = tile1
-
-    // Check for matches
-    if (checkForMatches(newBoard)) {
-      setGameBoard(newBoard)
-
-      // Increase points and handle moves
-      if (user) {
-        const updatedPoints = user.points + 5
-        setUser({ ...user, points: updatedPoints })
-        setMovesLeft(movesLeft - 1)
-        updateDatabase(user.telegramId, updatedPoints)
-      }
-    } else {
-      // If no match, revert the swap
-      setTimeout(() => {
-        setGameBoard([...gameBoard])
-      }, 300)
+    } catch (err) {
+      setError('An error occurred while increasing points')
     }
   }
 
-  // Save the updated points and moves to the database
-  const updateDatabase = async (telegramId: string, points: number) => {
-    await fetch('/api/update-points', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ telegramId, points }),
-    })
-  }
-
-  // Loading or error states
   if (error) {
     return <div className="container mx-auto p-4 text-red-500">{error}</div>
   }
@@ -156,41 +83,19 @@ export default function Home() {
 
   return (
     <div className="container mx-auto p-4">
-      <header className="flex justify-between mb-4">
-        <div className="font-bold">Hello, {user?.firstName || 'Guest'}</div>
-        <div>Fluxx Balance: {fluxxBalance} Fluxx</div>
-      </header>
-
-      <div className="mb-4 flex justify-between">
-        <div>Points: {user?.points}</div>
-        <div>Moves Left: {movesLeft}</div>
-      </div>
-
-      <div className="game-board">
-        {gameBoard.map((row, rowIndex) => (
-          <div key={rowIndex} className="game-row flex">
-            {row.map((tile, colIndex) => (
-              <div
-                key={tile.id}
-                className={`tile ${tile.type}`}
-                onClick={() => {
-                  if (selectedIndex === null) {
-                    setSelectedIndex(tile.id)
-                  } else {
-                    // Example of swapping adjacent tiles
-                    const [x1, y1] = [Math.floor(selectedIndex / 5), selectedIndex % 5]
-                    const [x2, y2] = [rowIndex, colIndex]
-                    handleTileSwap(x1, y1, x2, y2)
-                    setSelectedIndex(null)
-                  }
-                }}
-              >
-                {tile.type[0].toUpperCase()}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+      <h1 className="text-2xl font-bold mb-4">Welcome, {user.firstName}!</h1>
+      <p>Your current points: {user.points}</p>
+      <button
+        onClick={handleIncreasePoints}
+        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4"
+      >
+        Increase Points
+      </button>
+      {notification && (
+        <div className="mt-4 p-2 bg-green-100 text-green-700 rounded">
+          {notification}
+        </div>
+      )}
     </div>
   )
 }
