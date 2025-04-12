@@ -12,25 +12,20 @@ declare global {
 }
 
 interface User {
-  firstName: string
-  points: number
-  telegramId: string
+  firstName: string;
+  points: number;
+  telegramId: string;
 }
-
-interface Tile {
-  color: string
-  matched: boolean
-}
-
-const colors = ['red', 'blue', 'green', 'yellow', 'purple']
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
-  const [tiles, setTiles] = useState<Tile[][]>([])
   const [error, setError] = useState<string | null>(null)
   const [notification, setNotification] = useState('')
   const [movesLeft, setMovesLeft] = useState<number>(30)
   const [fluxxBalance, setFluxxBalance] = useState<number>(0)
+
+  // Ensure that user.points is safely accessed
+  const points = user?.points || 0  // Safe fallback to 0 if points are undefined
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
@@ -53,7 +48,7 @@ export default function Home() {
               setError(data.error)
             } else {
               setUser(data)
-              calculateFluxxBalance(data.points) // Update Fluxx balance on initial load
+              setFluxxBalance(Math.floor(data.points / 10000)) // Calculate Fluxx balance
             }
           })
           .catch(() => {
@@ -67,70 +62,31 @@ export default function Home() {
     }
   }, [])
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (movesLeft < 30) setMovesLeft((prev) => prev + 1)
-    }, 3600000) // Update moves every hour
+  const handleIncreasePoints = async () => {
+    if (!user) return
 
-    return () => clearInterval(interval)
-  }, [movesLeft])
-
-  const calculateFluxxBalance = (points: number) => {
-    const fluxx = Math.floor(points / 10000) // 1 Fluxx = 10,000 points
-    setFluxxBalance(fluxx)
-  }
-
-  const handleTileClick = (rowIdx: number, colIdx: number) => {
-    if (movesLeft <= 0) {
-      setError('You have no moves left this hour')
-      return
-    }
-
-    // Example: Simplified logic for matching tiles (you can extend this to match)
-    const newTiles = [...tiles]
-    const tile = newTiles[rowIdx][colIdx]
-    tile.matched = true
-
-    // Update tiles
-    setTiles(newTiles)
-
-    // Increment points
-    const earnedPoints = 5
-    const newPoints = user?.points + earnedPoints || 0
-    calculateFluxxBalance(newPoints)
-
-    // Update user points in the backend
-    fetch('/api/increase-points', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ telegramId: user?.telegramId, points: earnedPoints }),
-    })
-
-    setMovesLeft((prev) => prev - 1)
-  }
-
-  const generateGameBoard = () => {
-    const rows = 5
-    const cols = 5
-    const board: Tile[][] = []
-
-    for (let row = 0; row < rows; row++) {
-      const rowTiles: Tile[] = []
-      for (let col = 0; col < cols; col++) {
-        const randomColor = colors[Math.floor(Math.random() * colors.length)]
-        rowTiles.push({ color: randomColor, matched: false })
+    try {
+      const res = await fetch('/api/increase-points', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ telegramId: user.telegramId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setUser({ ...user, points: data.points })
+        setFluxxBalance(Math.floor(data.points / 10000)) // Update Fluxx balance
+        setNotification('Points increased successfully!')
+        setTimeout(() => setNotification(''), 3000)
+      } else {
+        setError('Failed to increase points')
       }
-      board.push(rowTiles)
+    } catch (err) {
+      console.error(err)
+      setError('An error occurred while increasing points')
     }
-
-    setTiles(board)
   }
-
-  useEffect(() => {
-    generateGameBoard()
-  }, [])
 
   if (error) {
     return <div className="container mx-auto p-4 text-red-500">{error}</div>
@@ -141,34 +97,22 @@ export default function Home() {
   return (
     <div className="container mx-auto p-4">
       <header className="flex justify-between mb-4">
-        <div className="font-bold">Hello, {user.firstName}</div>
-        <div>
-          Fluxx Balance: {fluxxBalance} Fluxx
-        </div>
+        <div className="font-bold">Hello, {user?.firstName || "Guest"}</div>
+        <div>Fluxx Balance: {fluxxBalance} Fluxx</div>
       </header>
 
       <div className="flex justify-between mb-4">
-        <div>Points: {user.points}</div>
+        <div>Points: {points}</div>  {/* Using the safe points value */}
         <div>Moves Left: {movesLeft}</div>
       </div>
 
-      <div className="grid grid-cols-5 gap-2">
-        {tiles.map((row, rowIdx) => (
-          <div key={rowIdx} className="flex">
-            {row.map((tile, colIdx) => (
-              <button
-                key={colIdx}
-                onClick={() => handleTileClick(rowIdx, colIdx)}
-                style={{ backgroundColor: tile.color }}
-                className="w-12 h-12 border-2"
-              >
-                {tile.matched ? '✔️' : ''}
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-
+      {/* Your game tiles logic here */}
+      <button
+        onClick={handleIncreasePoints}
+        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4"
+      >
+        Increase Points
+      </button>
       {notification && (
         <div className="mt-4 p-2 bg-green-100 text-green-700 rounded">
           {notification}
