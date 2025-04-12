@@ -11,8 +11,14 @@ declare global {
   }
 }
 
+interface User {
+  firstName: string;
+  points: number;
+  telegramId: string;
+}
+
 export default function Home() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notification, setNotification] = useState('')
 
@@ -21,7 +27,7 @@ export default function Home() {
       const tg = window.Telegram.WebApp
       tg.ready()
 
-      const initData = tg.initData || ''
+      // Removed unused initData
       const initDataUnsafe = tg.initDataUnsafe || {}
 
       if (initDataUnsafe.user) {
@@ -40,7 +46,7 @@ export default function Home() {
               setUser(data)
             }
           })
-          .catch((err) => {
+          .catch(() => {
             setError('Failed to fetch user data')
           })
       } else {
@@ -71,6 +77,7 @@ export default function Home() {
         setError('Failed to increase points')
       }
     } catch (err) {
+      console.error(err) // Log the error if needed
       setError('An error occurred while increasing points')
     }
   }
