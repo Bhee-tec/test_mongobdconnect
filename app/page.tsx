@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { WebApp } from '@twa-dev/types'
 
 declare global {
@@ -12,15 +12,15 @@ declare global {
 }
 
 interface User {
-  firstName: string;
-  points: number;
-  telegramId: string;
-  movesLeft: number;
+  firstName: string
+  points: number
+  telegramId: string
+  movesLeft: number
 }
 
 type Tile = {
-  id: number;
-  type: string; // Tile type (e.g., color)
+  id: number
+  type: string // Tile type (e.g., color)
 }
 
 const TILE_TYPES = ['red', 'blue', 'green', 'yellow', 'purple'] // Tile colors
@@ -29,9 +29,11 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fluxxBalance, setFluxxBalance] = useState<number>(0)
-  const [movesLeft, setMovesLeft] = useState<number>(30)  // Initial moves limit
+  const [movesLeft, setMovesLeft] = useState<number>(30) // Initial moves limit
   const [gameBoard, setGameBoard] = useState<Tile[][]>([]) // 2D array for the game board
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null) // Track the selected tile
 
+  // Fetch the user data and set up the game
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp
@@ -54,8 +56,8 @@ export default function Home() {
             } else {
               setUser(data)
               setFluxxBalance(Math.floor(data.points / 10000)) // Calculate Fluxx balance
-              setMovesLeft(data.movesLeft)  // Set initial moves left
-              generateGameBoard()
+              setMovesLeft(data.movesLeft) // Set initial moves left
+              generateGameBoard() // Generate the game board
             }
           })
           .catch(() => {
@@ -83,7 +85,29 @@ export default function Home() {
     setGameBoard(board)
   }
 
-  // Swap tiles logic
+  // Check for matching tiles
+  const checkForMatches = (board: Tile[][]) => {
+    let matchFound = false
+    // Horizontal check
+    for (let i = 0; i < board.length; i++) {
+      for (let j = 0; j < board[i].length - 2; j++) {
+        if (board[i][j].type === board[i][j + 1].type && board[i][j].type === board[i][j + 2].type) {
+          matchFound = true
+        }
+      }
+    }
+    // Vertical check
+    for (let i = 0; i < board.length - 2; i++) {
+      for (let j = 0; j < board[i].length; j++) {
+        if (board[i][j].type === board[i + 1][j].type && board[i][j].type === board[i + 2][j].type) {
+          matchFound = true
+        }
+      }
+    }
+    return matchFound
+  }
+
+  // Handle tile swap
   const handleTileSwap = (x1: number, y1: number, x2: number, y2: number) => {
     const newBoard = [...gameBoard]
     const tile1 = newBoard[x1][y1]
@@ -93,38 +117,23 @@ export default function Home() {
     newBoard[x1][y1] = tile2
     newBoard[x2][y2] = tile1
 
-    // Check for matches (this is a simplified example)
+    // Check for matches
     if (checkForMatches(newBoard)) {
       setGameBoard(newBoard)
-      // Increase points and handle move
-      setUser({ ...user!, points: user!.points + 5 })
-      setMovesLeft(movesLeft - 1)
-      updateDatabase(user!.telegramId, user!.points + 5)
-    }
-  }
 
-  // Check for matches (3 or more tiles of the same type in a row or column)
-  const checkForMatches = (board: Tile[][]) => {
-    let matchFound = false
-    // Horizontal check
-    for (let i = 0; i < board.length; i++) {
-      for (let j = 0; j < board[i].length - 2; j++) {
-        if (board[i][j].type === board[i][j + 1].type && board[i][j].type === board[i][j + 2].type) {
-          matchFound = true
-          // Handle the match (reset the tiles, add points, etc.)
-        }
+      // Increase points and handle moves
+      if (user) {
+        const updatedPoints = user.points + 5
+        setUser({ ...user, points: updatedPoints })
+        setMovesLeft(movesLeft - 1)
+        updateDatabase(user.telegramId, updatedPoints)
       }
+    } else {
+      // If no match, revert the swap
+      setTimeout(() => {
+        setGameBoard([...gameBoard])
+      }, 300)
     }
-    // Vertical check
-    for (let i = 0; i < board.length - 2; i++) {
-      for (let j = 0; j < board[i].length; j++) {
-        if (board[i][j].type === board[i + 1][j].type && board[i][j].type === board[i + 2][j].type) {
-          matchFound = true
-          // Handle the match (reset the tiles, add points, etc.)
-        }
-      }
-    }
-    return matchFound
   }
 
   // Save the updated points and moves to the database
@@ -138,6 +147,7 @@ export default function Home() {
     })
   }
 
+  // Loading or error states
   if (error) {
     return <div className="container mx-auto p-4 text-red-500">{error}</div>
   }
@@ -147,7 +157,7 @@ export default function Home() {
   return (
     <div className="container mx-auto p-4">
       <header className="flex justify-between mb-4">
-        <div className="font-bold">Hello, {user?.firstName || "Guest"}</div>
+        <div className="font-bold">Hello, {user?.firstName || 'Guest'}</div>
         <div>Fluxx Balance: {fluxxBalance} Fluxx</div>
       </header>
 
@@ -163,7 +173,17 @@ export default function Home() {
               <div
                 key={tile.id}
                 className={`tile ${tile.type}`}
-                onClick={() => handleTileSwap(rowIndex, colIndex, rowIndex, colIndex + 1)} // Example of swapping adjacent tiles
+                onClick={() => {
+                  if (selectedIndex === null) {
+                    setSelectedIndex(tile.id)
+                  } else {
+                    // Example of swapping adjacent tiles
+                    const [x1, y1] = [Math.floor(selectedIndex / 5), selectedIndex % 5]
+                    const [x2, y2] = [rowIndex, colIndex]
+                    handleTileSwap(x1, y1, x2, y2)
+                    setSelectedIndex(null)
+                  }
+                }}
               >
                 {tile.type[0].toUpperCase()}
               </div>
