@@ -15,16 +15,17 @@ interface User {
   firstName: string;
   points: number;
   telegramId: string;
+  movesLeft: number;
 }
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notification, setNotification] = useState('')
-  const [movesLeft, setMovesLeft] = useState<number>(30)
   const [fluxxBalance, setFluxxBalance] = useState<number>(0)
+  const [movesLeft, setMovesLeft] = useState<number>(30)  // Initial moves limit
+  const [gameBoard, setGameBoard] = useState<number[][]>([]) // Example board for the game
 
-  // Ensure that user.points is safely accessed
   const points = user?.points || 0  // Safe fallback to 0 if points are undefined
 
   useEffect(() => {
@@ -49,6 +50,7 @@ export default function Home() {
             } else {
               setUser(data)
               setFluxxBalance(Math.floor(data.points / 10000)) // Calculate Fluxx balance
+              setMovesLeft(data.movesLeft)  // Set initial moves left
             }
           })
           .catch(() => {
@@ -63,7 +65,10 @@ export default function Home() {
   }, [])
 
   const handleIncreasePoints = async () => {
-    if (!user) return
+    if (!user || movesLeft <= 0) {
+      setError('No moves left for this hour')
+      return
+    }
 
     try {
       const res = await fetch('/api/increase-points', {
@@ -79,6 +84,19 @@ export default function Home() {
         setFluxxBalance(Math.floor(data.points / 10000)) // Update Fluxx balance
         setNotification('Points increased successfully!')
         setTimeout(() => setNotification(''), 3000)
+
+        // Update the moves left after a successful move
+        const newMovesLeft = movesLeft - 1
+        setMovesLeft(newMovesLeft)
+
+        // Save updated moves left to database
+        await fetch('/api/update-moves', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ telegramId: user.telegramId, movesLeft: newMovesLeft }),
+        })
       } else {
         setError('Failed to increase points')
       }
@@ -87,6 +105,23 @@ export default function Home() {
       setError('An error occurred while increasing points')
     }
   }
+
+  // Function to reset moves after an hour
+  const resetMoves = () => {
+    const now = new Date()
+    const lastReset = new Date(localStorage.getItem('lastReset') || 0)
+    const diffInHours = Math.abs(now.getTime() - lastReset.getTime()) / 36e5
+
+    if (diffInHours >= 1) {
+      // Reset moves to 30 if an hour has passed
+      setMovesLeft(30)
+      localStorage.setItem('lastReset', now.toISOString())  // Store the last reset time
+    }
+  }
+
+  useEffect(() => {
+    resetMoves()
+  }, [movesLeft])
 
   if (error) {
     return <div className="container mx-auto p-4 text-red-500">{error}</div>
@@ -101,9 +136,9 @@ export default function Home() {
         <div>Fluxx Balance: {fluxxBalance} Fluxx</div>
       </header>
 
-      <div className="flex justify-between mb-4">
+      <div className="mb-4 flex justify-between">
         <div>Points: {points}</div>  {/* Using the safe points value */}
-        <div>Moves Left: {movesLeft}</div>
+        <div>Moves Left: {movesLeft}</div>  {/* Displaying the remaining moves */}
       </div>
 
       {/* Your game tiles logic here */}
@@ -113,6 +148,7 @@ export default function Home() {
       >
         Increase Points
       </button>
+
       {notification && (
         <div className="mt-4 p-2 bg-green-100 text-green-700 rounded">
           {notification}
